@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Find CHI 2026 papers through the authors and research you cite.">
+  <title>CHI 2026 Citation Explorer</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <a class="brand" href="./" aria-label="CHI 2026 Citation Explorer home"><span class="brand-mark" aria-hidden="true">✳</span> CHI<span class="brand-year">2026</span></a>
+      <a class="program-link" href="https://programs.sigchi.org/chi/2026/program" target="_blank" rel="noopener">Conference program</a>
+    </div>
+  </header>
+  <main>
+    <section class="hero" aria-labelledby="heading">
+      <canvas id="network" aria-hidden="true"></canvas>
+      <div class="wrap hero-inner">
+        <p class="eyebrow"><span></span> Barcelona, Spain · ACM CHI</p>
+        <h1 id="heading">Citation<br><em>Explorer.</em></h1>
+        <p class="hero-copy">Discover CHI 2026 papers through the people who cite your work and the authors you cite.</p>
+      </div>
+    </section>
+    <div class="wrap below">
+      <section class="search-box" aria-label="Find an author">
+        <div class="search-intro">
+          <label for="search">Find an author</label>
+          <p>Search names from the CHI 2026 program.</p>
+        </div>
+        <div class="search-side">
+          <div class="combobox">
+            <div class="search-line">
+              <span class="search-icon" aria-hidden="true"></span>
+              <input id="search" type="text" role="combobox" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false" autocomplete="off" spellcheck="false" placeholder="Type a name, e.g. Luigi" disabled>
+              <button id="clear" type="button" aria-label="Clear author search" hidden>×</button>
+            </div>
+            <ul id="suggestions" role="listbox" aria-label="Matching authors" hidden></ul>
+          </div>
+          <p class="example">Try the demo <button id="example" type="button" disabled>Luigi De Russis</button></p>
+        </div>
+      </section>
+      <section id="workspace" aria-label="Paper recommendations">
+        <div id="status" role="status" aria-live="polite"></div>
+        <section id="intro">
+          <p class="section-label">Explore the program</p>
+          <h2>Follow a citation</h2>
+          <div class="guide">
+            <article><span class="guide-symbol" aria-hidden="true">◎</span><h3>Papers that cite my work</h3><p>Find CHI 2026 papers that directly reference your publications.</p></article>
+            <article><span class="guide-symbol" aria-hidden="true">⊕</span><h3>Papers by authors who cite me</h3><p>Discover new work by people who have cited you in another publication.</p></article>
+            <article><span class="guide-symbol" aria-hidden="true">◇</span><h3>Papers by authors I cite</h3><p>See what the authors cited in your CHI 2026 papers and other work are presenting.</p></article>
+          </div>
+        </section>
+        <section id="results" hidden></section>
+      </section>
+    </div>
+  </main>
+  <footer class="wrap footer">
+    <span>CHI 2026 Citation Explorer</span>
+    <div><a href="https://programs.sigchi.org/" target="_blank" rel="noopener">SIGCHI program data</a> · <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a> · <a href="https://openalex.org/" target="_blank" rel="noopener">OpenAlex citation data</a></div>
+  </footer>
+</body>
+</html>
