@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Temporary files written by scripts/build-data.py before replacing outputs
+dist/*.tmp
+
+# Local editor and tool settings
+.claude/
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

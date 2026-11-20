@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Find CHI 2026 papers through the authors and research you cite.">
-  <title>CHI 2026 Citation Explorer</title>
+  <meta name="description" content="CHI 2026 paper recommendations from who you cite and who cites you.">
+  <title>Citation-Based Picks · CHI 2026</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&amp;family=Roboto:wght@400;500;600;700&amp;display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&amp;family=Roboto:wght@400;500;600;700&amp;display=swap">
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
 </head>
@@ -21,15 +21,20 @@
     <div class="conference-context"><strong>CHI 2026</strong><span>13–17 April · Barcelona</span></div>
     <nav class="side-nav" aria-label="Conference navigation">
       <a href="https://programs.sigchi.org/chi/2026/program">Program</a>
-      <a href="./" aria-current="page">Citation Explorer</a>
+      <a href="#/" data-route="explorer" aria-current="page">Citation-Based Picks</a>
+    </nav>
+    <nav class="side-nav personal-nav" aria-label="My conference">
+      <a href="#/schedule" data-route="schedule"><span class="nav-icon icon-clock" aria-hidden="true"></span>My Schedule<span class="nav-count" data-saved-count hidden></span></a>
+      <a href="#/list" data-route="list"><span class="nav-icon icon-list" aria-hidden="true"></span>My List<span class="nav-count" data-saved-count hidden></span></a>
     </nav>
   </aside>
   <div class="page">
     <main id="main" class="wrap">
+      <div id="explorer-view">
       <header class="page-heading">
         <p class="conference-label">CHI 2026 <span>·</span> ACM Conference on Human Factors in Computing Systems</p>
-        <h1>Citation Explorer</h1>
-        <p>Discover CHI 2026 papers through the people who cite your work and the authors you cite.</p>
+        <h1>Citation-Based Picks</h1>
+        <p>CHI 2026 paper recommendations from who you cite and who cites you.</p>
       </header>
       <section class="search-box" aria-label="Find an author">
         <label class="search-label" for="search">Find an author</label>
@@ -37,12 +42,25 @@
           <div class="combobox">
             <div class="search-line">
               <span class="search-icon" aria-hidden="true"></span>
-              <input id="search" type="text" role="combobox" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false" autocomplete="off" spellcheck="false" placeholder="Search the program by author name" disabled>
+              <input id="search" type="text" role="combobox" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false" autocomplete="off" spellcheck="false" placeholder="Search by author name, or paste an ORCID" disabled>
               <button id="clear" type="button" aria-label="Clear author search" hidden>×</button>
             </div>
             <ul id="suggestions" role="listbox" aria-label="Matching authors" hidden></ul>
           </div>
-          <p class="example">Try the demo <button id="example" type="button" disabled>Luigi De Russis</button></p>
+          <div class="demos">
+            <span class="demos-label" id="demos-label">Try a demo</span>
+            <ul id="demos" aria-labelledby="demos-label"></ul>
+          </div>
+          <div class="demos" id="saved-row" hidden>
+            <span class="demos-label" id="saved-label">Saved in this browser</span>
+            <ul id="saved-authors" aria-labelledby="saved-label"></ul>
+          </div>
+          <p class="example">Authors outside the CHI 2026 program are looked up in OpenAlex once, then saved in this browser.</p>
+          <details class="key-settings">
+            <summary>OpenAlex API key (optional)</summary>
+            <p>Live lookups share a small free daily budget per network. A free personal key raises it.</p>
+            <div id="key-slot"></div>
+          </details>
         </div>
       </section>
       <section id="workspace" aria-label="Paper recommendations">
@@ -56,6 +74,43 @@
           </div>
         </section>
         <section id="results" hidden></section>
+      </section>
+      </div>
+      <section id="list-view" aria-labelledby="list-title" hidden>
+        <header class="page-heading">
+          <p class="conference-label">CHI 2026 <span>·</span> Saved in this browser</p>
+          <h1 id="list-title" tabindex="-1">My List</h1>
+          <p>Papers you added from your recommendations. Each one shows when and where it is presented.</p>
+        </header>
+        <div class="list-toolbar">
+          <div class="segmented" role="group" aria-label="Sort my list">
+            <span class="segmented-label">Sort by</span>
+            <button type="button" data-sort="time" aria-pressed="true">Time</button>
+            <button type="button" data-sort="title" aria-pressed="false">Title</button>
+            <button type="button" data-sort="added" aria-pressed="false">Recently added</button>
+          </div>
+          <div class="list-actions">
+            <a class="secondary-button" href="#/schedule">View schedule</a>
+            <button type="button" class="secondary-button" data-ics>Download calendar (.ics)</button>
+          </div>
+        </div>
+        <div id="list-items" class="saved-list"></div>
+      </section>
+      <section id="schedule-view" aria-labelledby="schedule-title" hidden>
+        <header class="page-heading">
+          <p class="conference-label">CHI 2026 <span>·</span> Times in conference local time (UTC+02:00)</p>
+          <h1 id="schedule-title" tabindex="-1">My Schedule</h1>
+          <p>Your saved papers, arranged by day and presentation time.</p>
+        </header>
+        <div class="day-tabs" role="tablist" aria-label="Conference days"></div>
+        <div class="list-toolbar schedule-toolbar">
+          <p id="schedule-summary" class="toolbar-note"></p>
+          <div class="list-actions">
+            <a class="secondary-button" href="#/list">View list</a>
+            <button type="button" class="secondary-button" data-ics>Download calendar (.ics)</button>
+          </div>
+        </div>
+        <div id="schedule-items" class="timeline" role="tabpanel"></div>
       </section>
     </main>
     <footer class="wrap footer">

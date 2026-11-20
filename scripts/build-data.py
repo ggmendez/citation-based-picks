@@ -12,23 +12,52 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-PROGRAM = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT.parent / "CHI_2026_program.json"
+ARGS = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
+# --program-only refreshes program.json and program-works.json without rebuilding author snapshots.
+PROGRAM_ONLY = "--program-only" in sys.argv[1:]
+# --people-only writes people.json from the program file alone (no OpenAlex requests).
+PEOPLE_ONLY = "--people-only" in sys.argv[1:]
+PROGRAM = Path(ARGS[0]) if ARGS else ROOT.parent / "CHI_2026_program.json"
 DIST = ROOT / "dist"
 FIELDS = "id,doi,title,publication_year,primary_location,authorships,referenced_works"
-SIGCHI = re.compile(
-    r"human factors in computing systems|computer.human interaction in play|"
-    r"computer.supported cooperative work|designing interactive systems|"
-    r"user interface software and technology|intelligent user interfaces|"
-    r"engineering interactive computing systems|mobile human.computer interaction|"
-    r"ubiquitous computing|interactive surfaces and spaces|spatial user interaction|"
-    r"tangible, embedded and embodied interaction|conversational user interfaces|"
-    r"automotive user interfaces|acm transactions on computer.human interaction|"
-    r"proceedings of the acm on human.computer interaction|"
-    r"creativity (?:&|and) cognition|eye tracking research|supporting group work|"
-    r"human.robot interaction|multimodal interaction|interaction design and children|"
-    r"recommender systems|computational fabrication|virtual reality software and technology",
-    re.I,
-)
+# Ordered so more specific names (CHI EA, CHI PLAY) win over broader ones (CHI).
+SIGCHI_VENUES = [(label, re.compile(pattern, re.I)) for label, pattern in [
+    ("CHI EA", r"extended abstracts on human factors in computing systems|\bchi ea\b"),
+    ("CHI", r"human factors in computing systems"),
+    ("CHI PLAY", r"computer.human interaction in play|\bchi play\b"),
+    ("CSCW", r"computer.supported cooperative work|\bcscw\b"),
+    ("DIS", r"designing interactive systems"),
+    ("UIST", r"user interface software and technology"),
+    ("IUI", r"intelligent user interfaces"),
+    ("EICS", r"engineering interactive computing systems"),
+    ("MobileHCI", r"mobile human.computer interaction|human.computer interaction with mobile devices"),
+    ("UbiComp", r"pervasive and ubiquitous computing|\bubicomp\b"),
+    ("ISS", r"interactive surfaces and spaces"),
+    ("SUI", r"spatial user interaction"),
+    ("TEI", r"tangible,? embedded,? and embodied interaction"),
+    ("CUI", r"conversational user interfaces"),
+    ("AutomotiveUI", r"automotive user interfaces"),
+    ("TOCHI", r"acm transactions on computer.human interaction"),
+    ("PACMHCI", r"proceedings of the acm on human.computer interaction"),
+    ("C&C", r"creativity (?:&|and) cognition"),
+    ("ETRA", r"eye tracking research"),
+    ("GROUP", r"supporting group work"),
+    ("HRI", r"human.robot interaction"),
+    ("ICMI", r"multimodal interaction"),
+    ("IDC", r"interaction design and children"),
+    ("RecSys", r"recommender systems"),
+    ("SCF", r"computational fabrication"),
+    ("VRST", r"virtual reality software and technology"),
+]]
+
+
+def sigchi_venue(*names):
+    """Return the SIGCHI venue acronym for the first matching name, or None."""
+    for name in names:
+        for label, pattern in SIGCHI_VENUES:
+            if name and pattern.search(name):
+                return label
+    return None
 
 
 def api(path, **params):
@@ -104,7 +133,7 @@ def cite_record(work):
         "title": work.get("title") or "Untitled work",
         "year": work.get("publication_year"),
         "venue": venue,
-        "sigchi": bool(SIGCHI.search(venue) or SIGCHI.search(raw)),
+        "sigchi": sigchi_venue(venue, raw),
         "url": work.get("doi") or work["id"],
     }
 
@@ -229,6 +258,87 @@ def build_profile(entry, candidates, conference_dois, conference_titles, by_doi)
             "authoredWorks": len(history)}
 
 
+def schedule_for(content, program):
+    """Return when and where a paper is presented, as the SIGCHI program shows it.
+
+    Papers in a session get consecutive slots of the content type's duration
+    (12 minutes for papers), in the session's content order. Remote papers have
+    no session and appear in the video presentation event instead.
+    """
+    sessions = {item["id"]: item for item in program["sessions"]}
+    slots = {item["id"]: item for item in program["timeSlots"]}
+    rooms = {item["id"]: item["name"] for item in program["rooms"]}
+    minutes = {item["id"]: item.get("duration") or 0 for item in program["contentTypes"]}
+    for session_id in content.get("sessionIds", []):
+        session = sessions.get(session_id)
+        slot = slots.get(session and session.get("timeSlotId"))
+        if not slot:
+            continue
+        start, end = slot["startDate"], slot["endDate"]
+        if not session.get("isParallelPresentation") and minutes[content["typeId"]]:
+            length = minutes[content["typeId"]] * 60_000
+            start += session["contentIds"].index(content["id"]) * length
+            end = min(start + length, end)
+        return {"session": session["name"], "sessionId": session_id, "start": start, "end": end,
+                "sessionStart": slot["startDate"], "sessionEnd": slot["endDate"],
+                "room": rooms.get(session.get("roomId"))}
+    for event in program["events"]:
+        if content["id"] in event["contentIds"] and event.get("startDate"):
+            return {"session": event["name"], "eventId": event["id"], "video": True,
+                    "start": event["startDate"], "end": event["endDate"],
+                    "room": rooms.get(event.get("roomId"))}
+    return {"session": None}
+
+
+def people_index(program, names):
+    """Everyone with a role in the program: affiliations, contributions, chairs.
+
+    The site loads this when someone opens a person's details. Contents are any
+    program item (papers, posters, workshops, ...), each with when and where it
+    is presented.
+    """
+    types = {item["id"]: item for item in program["contentTypes"]}
+    rooms = {item["id"]: item["name"] for item in program["rooms"]}
+    slots = {item["id"]: item for item in program["timeSlots"]}
+    people, contents, sessions = {}, {}, {}
+
+    def person(person_id):
+        return people.setdefault(person_id, {"name": names.get(person_id, ""), "affiliations": [], "contents": [], "chairs": []})
+
+    for content in program["contents"]:
+        authors = content.get("authors", [])
+        if not authors:
+            continue
+        kind = types.get(content["typeId"], {})
+        when = schedule_for(content, program)
+        contents[content["id"]] = {
+            "title": content["title"],
+            "type": kind.get("displayName") or kind.get("name"),
+            "color": kind.get("color"),
+            "authors": [a["personId"] for a in authors],
+            "doi": content.get("addons", {}).get("doi", {}).get("url"),
+            **{key: value for key, value in when.items() if value is not None},
+        }
+        for author in authors:
+            entry = person(author["personId"])
+            entry["contents"].append(content["id"])
+            for affiliation in author.get("affiliations", []):
+                place = ", ".join(part for part in (affiliation.get("city"), affiliation.get("country")) if part)
+                label = " | ".join(part for part in (affiliation.get("institution"), place) if part)
+                if label and label not in entry["affiliations"]:
+                    entry["affiliations"].append(label)
+    for session in program["sessions"]:
+        slot = slots.get(session.get("timeSlotId"))
+        for chair in session.get("chairIds", []):
+            person(chair)["chairs"].append(session["id"])
+            sessions[session["id"]] = {
+                "name": session["name"], "room": rooms.get(session.get("roomId")),
+                "start": slot and slot["startDate"], "end": slot and slot["endDate"],
+                "type": types.get(session["typeId"], {}).get("displayName"),
+            }
+    return {"people": people, "contents": contents, "sessions": sessions}
+
+
 def main():
     program = json.loads(PROGRAM.read_text(encoding="utf-8-sig"))
     author_map = json.loads((ROOT / "author-map.json").read_text(encoding="utf-8"))
@@ -237,12 +347,18 @@ def main():
         p["id"]: " ".join(p[key].strip() for key in ("firstName", "middleInitial", "lastName") if p.get(key, "").strip())
         for p in program["people"] if p["id"] in all_authors
     }
+    everyone = {
+        p["id"]: " ".join(p[key].strip() for key in ("firstName", "middleInitial", "lastName") if p.get(key, "").strip())
+        for p in program["people"]
+    }
+    write_json("people.json", people_index(program, everyone))
+    if PEOPLE_ONLY:
+        return
     types = {item["id"]: item["name"] for item in program["contentTypes"]}
-    sessions = {item["id"]: item["name"] for item in program["sessions"]}
     candidates = [
         {"id": c["id"], "title": c["title"], "doi": c["addons"]["doi"]["url"],
          "authors": [a["personId"] for a in c.get("authors", []) if a["personId"] in people],
-         "session": next((sessions[s] for s in c.get("sessionIds", []) if s in sessions), None)}
+         **schedule_for(c, program)}
         for c in program["contents"]
         if types[c["typeId"]] == "Paper" and c.get("addons", {}).get("doi", {}).get("url")
     ]
@@ -268,11 +384,34 @@ def main():
     dois.update(set().union(*conference_dois.values()))
     by_doi = {doi_key(work["doi"]): work for work in batches("doi", dois)}
     print(f"{len(by_doi)}/{len(dois)} program DOIs resolved", flush=True)
-    for person_id, entry in profiles.items():
+    # Compact index of the program papers' OpenAlex records. The site uses it to
+    # compute recommendations live for authors without a prebuilt snapshot.
+    program_works = {}
+    for c in candidates:
+        work = by_doi.get(doi_key(c["doi"]))
+        if work:
+            program_works[c["id"]] = {
+                "work": short_id(work["id"]),
+                "authors": [[person_id, name] for person_id, name in people_on(work).items()],
+                "refs": sorted(references(work)),
+            }
+    write_json("program-works.json", program_works)
+    for person_id, entry in ({} if PROGRAM_ONLY else profiles).items():
         profile = build_profile(entry, candidates, conference_dois[person_id], conference_titles[person_id], by_doi)
         write_json(f"citations-{person_id}.json", profile)
         print(f"{len(profile['matches'])} recommendations for {entry['name']}", flush=True)
-    write_json("program.json", {"authors": people, "papers": candidates, "profiles": profiles})
+    conference = program["conference"]
+    write_json("program.json", {
+        # Program timestamps hold the conference's local wall-clock time encoded
+        # as UTC; timeZoneOffset (minutes) converts them to real UTC instants.
+        "conference": {"name": conference["name"], "timeZone": conference["timeZoneName"],
+                       "timeZoneOffset": conference["timeZoneOffset"],
+                       "programUrl": f"https://programs.sigchi.org/{conference['shortName'].lower()}/{conference['year']}"},
+        "authors": people, "papers": candidates, "profiles": profiles,
+        "sigchiVenues": [[label, pattern.pattern] for label, pattern in SIGCHI_VENUES],
+        # Colours of the program's content types, as the SIGCHI program app shows them.
+        "types": {t["name"]: {"label": t.get("displayName") or t["name"], "color": t["color"]} for t in program["contentTypes"]},
+    })
 
 
 if __name__ == "__main__":
